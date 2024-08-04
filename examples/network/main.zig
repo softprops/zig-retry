@@ -1,7 +1,7 @@
 //! When dialing into a network server you aren't always guaranteed a response for a number of reasons.
 //! To be fault-tolerant, its a best practice to retry, idempotent network requests
 //!
-//! This program will retrie attempt to fetch data from an an http server listening on port 3000.
+//! This program will retry failed attempts to fetch data from an http server listening on port 3000.
 //!
 //! Run an http server listening on port 3000, `python3 -m http.server 3000` for example, in another tab to complete the program
 const std = @import("std");
