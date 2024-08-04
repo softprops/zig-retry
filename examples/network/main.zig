@@ -13,14 +13,19 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     // 👇 create a new policy
-    const policy = retry.Policy.fixed(1 * std.time.ns_per_s).withMaxRetries(1000);
+    const policy = retry.Policy.fixed(1 * std.time.ns_per_s).withMaxRetries(
+        if (std.posix.getenv("CI") != null)
+            0
+        else
+            1_000,
+    );
 
     var client = std.http.Client{ .allocator = allocator };
     defer client.deinit();
     const url = "http://localhost:3000";
 
     // 👇 retry operation until successful state presents itself
-    const resp = try policy.retry(
+    if (policy.retry(
         struct {
             fn func(c: *std.http.Client) anyerror!std.http.Client.FetchResult {
                 std.debug.print("attempting to fetch {s}\n", .{url});
@@ -29,6 +34,9 @@ pub fn main() !void {
         }.func,
         // 👇 arguments to pass to operation
         .{&client},
-    );
-    std.debug.print("got response {}", .{resp.status});
+    )) |resp| {
+        std.debug.print("got response {}", .{resp.status});
+    } else |err| {
+        std.debug.print("gave up after error {}", .{err});
+    }
 }
