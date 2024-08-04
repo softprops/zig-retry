@@ -1,3 +1,6 @@
+//! failable doesn't always translate to `ErrorUnion`. sometimes it just translates
+//! to unexpected which can be represented with plain values. `retryIf` with a `Condition` allows you
+//! to define what unexpected means for your operations as a user defined function
 const std = @import("std");
 const retry = @import("retry");
 

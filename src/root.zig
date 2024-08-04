@@ -1,6 +1,8 @@
 const std = @import("std");
 const testing = std.testing;
 
+var Rand = std.rand.DefaultPrng.init(0);
+
 /// Determines of an optional should be retried based on the the value
 /// of a result
 pub fn Condition(comptime T: type) type {
@@ -24,6 +26,7 @@ pub fn Condition(comptime T: type) type {
             return .{ .func = f };
         }
 
+        /// returns true if a value indicates an operation to be retried
         fn retryable(self: @This(), val: T) bool {
             return switch (self) {
                 .on_err => switch (@typeInfo(T)) {
@@ -50,6 +53,7 @@ test Condition {
     try std.testing.expect(!func.retryable(1));
 }
 
+/// Types of backoffs, a sequence of delays between operation invocations
 pub const Backoff = union(enum) {
     fixed: void,
     exponential: f64,
@@ -57,6 +61,7 @@ pub const Backoff = union(enum) {
     fn fixed() @This() {
         return .{ .fixed = {} };
     }
+
     fn exponential(exponent: f64) @This() {
         return .{ .exponential = exponent };
     }
@@ -80,9 +85,11 @@ pub const Backoff = union(enum) {
                         break :blk fac;
                     },
                 };
-                // todo: include jitter
 
                 var delay: usize = @intFromFloat(factor * @as(f64, @floatFromInt(self.policy.delay)));
+                if (self.policy.jitter) |rand| {
+                    delay = @intFromFloat(rand.float(f64) * @as(f64, @floatFromInt(delay)));
+                }
                 if (self.policy.max_delay) |max| {
                     delay = @min(delay, max);
                 }
@@ -94,20 +101,32 @@ pub const Backoff = union(enum) {
     };
 };
 
+/// A Policy captures rules that define the expected behavior
+/// of a retry including number of times to retry and frequency
+///
+/// The defaults settings include exponential backoff with 2.0 exponent, no max delay, max retries of 5
 pub const Policy = struct {
+    /// type of backoff delay, defaults to Backoff
     backoff: Backoff = Backoff.exponential(2.0),
-    jitter: bool = true,
-    delay: usize = 60 * 1000,
+    /// random used to produce a "jitter" effect. defaults to std.rand.DefaultPrng
+    jitter: ?std.Random = Rand.random(),
+    /// delay in nanoseconds, defaults to 100ms in nanos
+    delay: usize = std.time.ns_per_ms * 100,
+    /// upper bound for amount of delay applied, in nanoseconds
     max_delay: ?usize = null,
+    /// upper bound for number of times to retry an operation
     max_retries: usize = 5,
 
+    /// Conventice for common configuration. Returns a new Policy with defaults with a fixed delay (no jitter)
     pub fn fixed(delay: usize) @This() {
         return .{
             .backoff = Backoff.fixed(),
             .delay = delay,
+            .jitter = null,
         };
     }
 
+    /// Conventice for common configuration. Returns a new Policy with defaults with an exponential delay
     fn exponential(delay: usize, exponent: f64) @This() {
         return .{
             .backoff = Backoff.exponential(exponent),
@@ -115,12 +134,22 @@ pub const Policy = struct {
         };
     }
 
-    /// returns an iterator of backoff delays
+    pub fn withMaxRetries(self: @This(), max: usize) @This() {
+        var c = self;
+        c.max_retries = max;
+        return c;
+    }
+
+    /// Returns an iterator of backoff delays
     pub fn backoffs(self: @This()) Backoff.Iterator {
         return self.backoff.iterator(self);
     }
 
-    /// retries an operation if it fails
+    /// Retries an operation if it fails, where "fail" means
+    /// the function returns an ErrorUnion containing an error
+    ///
+    /// The provided function is assumed to be a function returning
+    /// and ErrorUnion
     pub fn retry(
         self: @This(),
         comptime f: anytype,
@@ -172,8 +201,12 @@ test "Policy.backoffs" {
             .expected = &.{ 1, 1, 1, 1 },
         },
         .{
-            .name = "exponential",
-            .policy = Policy.exponential(1, 2.0),
+            .name = "exponential (without jitter)",
+            .policy = Policy{
+                .backoff = Backoff.exponential(2.0),
+                .delay = 1,
+                .jitter = null,
+            },
             .expected = &.{ 1, 2, 4, 8 },
         },
     }) |case| {
