@@ -10,9 +10,7 @@
 
 [![Main](https://github.com/softprops/zig-retry/actions/workflows/ci.yml/badge.svg)](https://github.com/softprops/zig-retry/actions/workflows/ci.yml) ![License Info](https://img.shields.io/github/license/softprops/zig-retry) ![Release](https://img.shields.io/github/v/release/softprops/zig-retry) [![Zig Support](https://img.shields.io/badge/zig-0.13.0-black?logo=zig)](https://ziglang.org/documentation/0.13.0/)
 
-In software systems errors happen and often at no fault of callers within these systems. It's up to software authors to deal with it.
-
-This library helps build software that's more fault tolerant by retrying opertions based one flexible policies that define how often and when operations should be retried.
+A goal of any operation should be a successful outcome. This package gives operations a better chance at achieving that.
 
 ## 📼 installing
 
