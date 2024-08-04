@@ -134,9 +134,17 @@ pub const Policy = struct {
         };
     }
 
+    /// Overrides max retries
     pub fn withMaxRetries(self: @This(), max: usize) @This() {
         var c = self;
         c.max_retries = max;
+        return c;
+    }
+
+    /// Overrides jitter, passing null effectively disables jitter
+    pub fn withJitter(self: @This(), jitter: ?std.Random) @This() {
+        var c = self;
+        c.jitter = jitter;
         return c;
     }
 
@@ -202,11 +210,7 @@ test "Policy.backoffs" {
         },
         .{
             .name = "exponential (without jitter)",
-            .policy = Policy{
-                .backoff = Backoff.exponential(2.0),
-                .delay = 1,
-                .jitter = null,
-            },
+            .policy = Policy.exponential(1, 2.0).withJitter(null),
             .expected = &.{ 1, 2, 4, 8 },
         },
     }) |case| {
