@@ -116,6 +116,11 @@ pub const Policy = struct {
     max_delay: ?usize = null,
     /// upper bound for number of times to retry an operation
     max_retries: usize = 5,
+    sleep: *const fn (nanos: u64) void = struct {
+        fn func(nanos: u64) void {
+            std.time.sleep(nanos);
+        }
+    }.func,
 
     /// Conventice for common configuration. Returns a new Policy with defaults with a fixed delay (no jitter)
     pub fn fixed(delay: usize) @This() {
@@ -168,7 +173,7 @@ pub const Policy = struct {
 
     /// retries an operation based on a user defined function
     pub fn retryIf(
-        self: *const @This(),
+        self: @This(),
         comptime f: anytype,
         args: anytype,
         cond: Condition(returnType(f)),
@@ -178,7 +183,7 @@ pub const Policy = struct {
             const result = @call(.auto, f, args);
             if (cond.retryable(result)) {
                 if (iter.next()) |delay| {
-                    std.time.sleep(delay);
+                    self.sleep(delay);
                     continue;
                 }
             }
@@ -195,6 +200,29 @@ fn returnType(comptime f: anytype) type {
         },
         else => @compileError(msg),
     };
+}
+
+// when defaults change. this test should detect them
+// this test is a reminder to then inform clients through
+// the changelog of how defaults they may depended on will then impact them
+test "Policy defaults" {
+    const policy: Policy = .{};
+    var len: usize = 0;
+    var it = policy.backoffs();
+    while (it.next()) |_| {
+        len += 1;
+    }
+    try std.testing.expectEqual(5, policy.max_retries);
+    try std.testing.expectEqual(policy.max_retries, len);
+    try std.testing.expect(switch (policy.backoff) {
+        .exponential => |v| blk: {
+            try std.testing.expectApproxEqAbs(2.0, v, 0.0);
+            break :blk true;
+        },
+        else => false,
+    });
+    try std.testing.expect(policy.jitter != null);
+    try std.testing.expectEqual(policy.delay, std.time.ns_per_ms * 100);
 }
 
 test "Policy.backoffs" {
