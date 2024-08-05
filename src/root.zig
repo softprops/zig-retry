@@ -75,7 +75,7 @@ pub const Backoff = union(enum) {
         backoff: Backoff,
         current: f64 = 1,
         fn next(self: *@This()) ?usize {
-            if (self.policy.max_retries > 0) {
+            if ((self.policy.max_retries orelse 1) > 0) {
                 const factor: f64 = switch (self.backoff) {
                     .fixed => self.current,
                     .exponential => |v| blk: {
@@ -93,7 +93,10 @@ pub const Backoff = union(enum) {
                 if (self.policy.max_delay) |max| {
                     delay = @min(delay, max);
                 }
-                self.policy.max_retries -= 1;
+                // only decrement this for cases where a max exists
+                if (self.policy.max_retries) |max| {
+                    self.policy.max_retries = max - 1;
+                }
                 return delay;
             }
             return null;
@@ -115,7 +118,11 @@ pub const Policy = struct {
     /// upper bound for amount of delay applied, in nanoseconds
     max_delay: ?usize = null,
     /// upper bound for number of times to retry an operation
-    max_retries: usize = 5,
+    ///
+    /// setting this to null implies retrying forever which in some cases
+    /// will then run forever if a successful operation will never be possible
+    /// use this capability with that in mind
+    max_retries: ?usize = 5,
     sleep: *const fn (nanos: u64) void = struct {
         fn func(nanos: u64) void {
             std.time.sleep(nanos);
@@ -143,6 +150,15 @@ pub const Policy = struct {
     pub fn withMaxRetries(self: @This(), max: usize) @This() {
         var c = self;
         c.max_retries = max;
+        return c;
+    }
+
+    /// Overrides ma retries with a configuration that will retry forever
+    ///
+    /// Use this with caution as is possible some operation may never succeed
+    pub fn forever(self: @This()) @This() {
+        var c = self;
+        c.max_retries = null;
         return c;
     }
 
@@ -200,6 +216,23 @@ fn returnType(comptime f: anytype) type {
         },
         else => @compileError(msg),
     };
+}
+
+test "Policy.max_retries" {
+    const policy = Policy{
+        .max_retries = 1,
+    };
+    var it = policy.backoffs();
+    try std.testing.expect(it.next() != null);
+    try std.testing.expect(it.next() == null);
+}
+
+test "Policy.forever" {
+    const policy = (Policy{}).forever();
+    try std.testing.expect(policy.max_retries == null);
+    var it = policy.backoffs();
+    try std.testing.expect(it.next() != null);
+    try std.testing.expect(it.next() != null);
 }
 
 // when defaults change. this test should detect them
