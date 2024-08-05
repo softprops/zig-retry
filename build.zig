@@ -21,11 +21,17 @@ pub fn build(b: *std.Build) !void {
 
     // not a test but a docgenism
     // https://zig.guide/build-system/generating-documentation/
-    // var docs = b.addTest(.{
-    //     .root_source_file = b.path("src/root.zig"),
-    // });
-    // const docs_step = b.step("docs", "Generate docs");
-    // docs_step.dependOn(&docs.step);
+    var docs = b.addTest(.{
+        .root_source_file = b.path("src/root.zig"),
+    });
+    const docs_path = docs.getEmittedDocs();
+    const install_docs = b.addInstallDirectory(.{
+        .source_dir = docs_path,
+        .install_dir = .prefix,
+        .install_subdir = "docs",
+    });
+    const docs_step = b.step("docs", "Generate docs");
+    docs_step.dependOn(&install_docs.step);
 
     // // This allows the user to pass arguments to the application in the build
     // // command itself, like this: `zig build run -- arg1 arg2 etc`
