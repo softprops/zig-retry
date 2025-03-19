@@ -1,6 +1,7 @@
 .{
-    .name = "retry",
+    .name = .retry,
     .version = "0.1.0",
+    .fingerprint = 0x2ee051e37d9cc5a8,
     .paths = .{
         "build.zig",
         "build.zig.zon",
