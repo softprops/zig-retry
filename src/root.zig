@@ -1,19 +1,19 @@
 const std = @import("std");
 const testing = std.testing;
 
-var Rand = std.rand.DefaultPrng.init(0);
+var Rand = std.Random.DefaultPrng.init(0);
 
 /// Determines of an optional should be retried based on the the value
 /// of a result
 pub fn Condition(comptime T: type) type {
     return union(enum) {
         on_err: void,
-        func: *const fn (T) bool,
+        func_ptr: *const fn (T) bool,
 
         /// Retries on any error of an error union result
         pub fn onErr() @This() {
             switch (@typeInfo(T)) {
-                .ErrorUnion => {},
+                .error_union => {},
                 else => @compileError(
                     "onErr conditions assume ErrorUnion return types. Provided with a " ++ @typeName(T) ++ " type instead",
                 ),
@@ -23,17 +23,17 @@ pub fn Condition(comptime T: type) type {
 
         /// Retries depending on the result of a user defined func
         pub fn func(f: *const fn (T) bool) @This() {
-            return .{ .func = f };
+            return .{ .func_ptr = f };
         }
 
         /// returns true if a value indicates an operation to be retried
         fn retryable(self: @This(), val: T) bool {
             return switch (self) {
                 .on_err => switch (@typeInfo(T)) {
-                    .ErrorUnion => if (val) |_| false else |_| true,
+                    .error_union => if (val) |_| false else |_| true,
                     else => false,
                 },
-                .func => |v| v(val),
+                .func_ptr => |v| v(val),
             };
         }
     };
@@ -55,15 +55,15 @@ test Condition {
 
 /// Types of backoffs, a sequence of delays between operation invocations
 pub const Backoff = union(enum) {
-    fixed: void,
-    exponential: f64,
+    fixed_delay: void,
+    exponential_delay: f64,
 
     fn fixed() @This() {
-        return .{ .fixed = {} };
+        return .{ .fixed_delay = {} };
     }
 
     fn exponential(exponent: f64) @This() {
-        return .{ .exponential = exponent };
+        return .{ .exponential_delay = exponent };
     }
 
     pub fn iterator(self: @This(), policy: Policy) Iterator {
@@ -77,8 +77,8 @@ pub const Backoff = union(enum) {
         fn next(self: *@This()) ?usize {
             if ((self.policy.max_retries orelse 1) > 0) {
                 const factor: f64 = switch (self.backoff) {
-                    .fixed => self.current,
-                    .exponential => |v| blk: {
+                    .fixed_delay => self.current,
+                    .exponential_delay => |v| blk: {
                         const fac = self.current;
                         const next_factor = self.current * v;
                         self.current = next_factor;
@@ -211,7 +211,7 @@ pub const Policy = struct {
 fn returnType(comptime f: anytype) type {
     const msg = "expected a function with a return type";
     return switch (@typeInfo(@TypeOf(f))) {
-        .Fn => |info| info.return_type orelse {
+        .@"fn" => |info| info.return_type orelse {
             @compileError(msg);
         },
         else => @compileError(msg),
@@ -248,7 +248,7 @@ test "Policy defaults" {
     try std.testing.expectEqual(5, policy.max_retries);
     try std.testing.expectEqual(policy.max_retries, len);
     try std.testing.expect(switch (policy.backoff) {
-        .exponential => |v| blk: {
+        .exponential_delay => |v| blk: {
             try std.testing.expectApproxEqAbs(2.0, v, 0.0);
             break :blk true;
         },
